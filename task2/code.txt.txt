@@ -1,0 +1,196 @@
+import 'name.dart';
+import 'input_page.dart';
+import 'calculator.dart';
+import 'gradebook.dart';
+import 'print.dart';
+import 'package:flutter/material.dart';
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false, 
+      home: namePage(),
+    );
+  }
+}
+
+class namePage extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        backgroundColor: const Color.fromARGB(255, 173, 255, 21),
+        title: Row(
+          children: [
+            Image.asset('assets/BGNU_logo.png', height: 40),
+            SizedBox(width: 10),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  "Baba Guru Nanak University",
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.black,
+                  ),
+                ),
+                Text(
+                  "Nankana Sahib",
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    fontStyle: FontStyle.italic,
+                    color: Colors.black,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.search, color: Colors.black),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.notifications, color: Colors.black),
+            onPressed: () {},
+          ),
+          IconButton(
+            icon: Icon(Icons.account_circle, color: Colors.black),
+            onPressed: () {},
+          ),
+        ],
+      ),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: Colors.blueGrey),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Image.asset('assets/BGNU_logo.png', height: 60),
+                  SizedBox(height: 10),
+                  Text(
+                    "BGNU Navigation",
+                    style: TextStyle(
+                      color: Colors.black,
+                      fontSize: 18,
+                      fontStyle: FontStyle.italic,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            ListTile(
+              leading: Icon(Icons.calculate),
+              title: Text("Calculator"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => CalculatorPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.grade),
+              title: Text("Grade Book"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => GradeBookPage()),
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.person),
+              title: Text("Name"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => NamePage()), // ✅ Fixed
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.input),
+              title: Text("Input Page"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => InputPage()), // ✅ Fixed
+                );
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.print),
+              title: Text("Print Page"),
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (context) => PrintPage()),
+                );
+              },
+            ),
+          ],
+        ),
+      ),
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Text(
+                "Baba Guru Nanak University (BGNU) is a public sector university located in District Nankana Sahib, Punjab, Pakistan. It aims to facilitate between 10,000 to 15,000 students from around the world. The foundation stone was laid on October 28, 2019, by the Prime Minister of Pakistan in celebration of Guru Nanak Gurpurab's 550th anniversary. On July 2, 2020, the Government of Punjab formally passed the Baba Guru Nanak University Act 2020. The university plans to establish faculties in Medicine, Pharmacy, Engineering, Computer Science, Languages, Music, and Social Sciences.",
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontStyle: FontStyle.italic,
+                  fontWeight: FontWeight.normal,
+                  color: Colors.black,
+                ),
+              ),
+              SizedBox(height: 20),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Image.asset(
+                  'assets/BGNU_logo.png',
+                  width: 300,
+                  height: 250,
+                  fit: BoxFit.cover,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+      bottomNavigationBar: BottomAppBar(
+        color: const Color.fromARGB(255, 173, 255, 21),
+        child: Padding(
+          padding: EdgeInsets.all(10),
+          child: Text(
+            "© 2025 BGNU. Nankana Sahib.",
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              fontStyle: FontStyle.italic,
+              color: Colors.black,
+            ),
+          ),
+        ),
+      ),      
+    );
+  }
+}
