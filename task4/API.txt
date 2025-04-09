@@ -1,0 +1,241 @@
+import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+
+void main() => runApp(MyApp());
+
+class MyApp extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      home: DashboardScreen(),
+    );
+  }
+}
+
+class DashboardScreen extends StatefulWidget {
+  @override
+  _DashboardScreenState createState() => _DashboardScreenState();
+}
+
+class _DashboardScreenState extends State<DashboardScreen> {
+  List<dynamic> gradeData = [], filteredData = [];
+  String errorMessage = "";
+  TextEditingController searchController = TextEditingController();
+
+  Future<void> loadData() async {
+    try {
+      final response = await http.get(Uri.parse('https://bgnuerp.online/api/gradeapi'));
+      if (response.statusCode == 200) {
+        List<dynamic> data = json.decode(response.body);
+        print('API Response: $data'); // Add this line to check the API response.
+        SharedPreferences prefs = await SharedPreferences.getInstance();
+        await prefs.setString('gradeData', json.encode(data));
+        setState(() => gradeData = filteredData = data);
+      } else {
+        setState(() => errorMessage = "Error: ${response.statusCode}");
+      }
+    } catch (e) {
+      setState(() => errorMessage = "Error fetching data: $e");
+    }
+  }
+
+  void filterData(String query) {
+    setState(() {
+      filteredData = query.isEmpty
+          ? gradeData
+          : gradeData.where((item) => (item['mysemester']?.toString() ?? '').contains(query) || (item['coursetitle']?.toString() ?? '').contains(query)).toList();
+    });
+  }
+
+  Future<void> deleteRow(int index) async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    gradeData.removeAt(index);
+    await prefs.setString('gradeData', json.encode(gradeData));
+    setState(() => filteredData = List.from(gradeData));
+  }
+
+  Future<void> deleteAllData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('gradeData');
+    setState(() => gradeData = filteredData = []);
+  }
+
+  Future<void> loadFromLocalStorage() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? storedData = prefs.getString('gradeData');
+
+    if (storedData != null) {
+      try {
+        setState(() {
+          gradeData = json.decode(storedData);
+          filteredData = List.from(gradeData);
+        });
+      } catch (e) {
+        print("Error loading from local storage: $e");
+      }
+    }
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    loadFromLocalStorage();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Dashboard - Total: ${filteredData.length}"), backgroundColor: Colors.blueAccent),
+      drawer: Drawer(
+        child: ListView(
+          padding: EdgeInsets.zero,
+          children: [
+            DrawerHeader(decoration: BoxDecoration(color: Colors.blueAccent), child: Text('Grade Book', style: TextStyle(color: Colors.white, fontSize: 24))),
+            ListTile(title: Text('Open Grade Book'), onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => GradeBook(refreshDashboard: loadFromLocalStorage)))),
+          ],
+        ),
+      ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(controller: searchController, decoration: InputDecoration(labelText: "Search by Semester or Course Title", prefixIcon: Icon(Icons.search)), onChanged: filterData),
+            SizedBox(height: 10),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                ElevatedButton(onPressed: loadData, child: Text("Load Data")),
+                ElevatedButton(onPressed: deleteAllData, style: ElevatedButton.styleFrom(backgroundColor: Colors.red), child: Text("Delete All Data")),
+              ],
+            ),
+            if (errorMessage.isNotEmpty) ...[SizedBox(height: 10), Text(errorMessage, style: TextStyle(color: Colors.red))],
+            SizedBox(height: 20),
+            Expanded(
+              child: ListView.builder(
+                itemCount: filteredData.length,
+                itemBuilder: (context, index) {
+                  var item = filteredData[index];
+                  return Card(
+                    elevation: 3,
+                    child: ListTile(
+                      title: Text("${index + 1}. ${item['studentname'] ?? 'No Name'} (${item['rollno'] ?? 'No Roll No'})"),
+                      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text("Course Title: ${item['coursetitle'] ?? 'N/A'}"),
+                        Text("Obtained Marks: ${item['obtainedmarks'] ?? 'N/A'}"),
+                        Text("Semester: ${item['mysemester'] ?? 'N/A'}"),
+                      ]),
+                      leading: Icon(Icons.school),
+                      trailing: IconButton(icon: Icon(Icons.delete, color: Colors.red), onPressed: () => deleteRow(index)),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class GradeBook extends StatefulWidget {
+  final Function refreshDashboard;
+
+  GradeBook({required this.refreshDashboard});
+
+  @override
+  _GradeBookState createState() => _GradeBookState();
+}
+
+class _GradeBookState extends State<GradeBook> {
+  String? selectedCourse, selectedCreditHour, selectedSemester;
+  TextEditingController marksController = TextEditingController();
+
+  Future<void> saveData() async {
+    if ([selectedCourse, selectedCreditHour, selectedSemester, marksController.text].any((e) => e == null || e.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text("Please Fill All Fields")));
+      return;
+    }
+
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    List<dynamic> data = json.decode(prefs.getString('gradeData') ?? '[]');
+    data.add({
+      "coursetitle": selectedCourse,
+      "credithours": selectedCreditHour,
+      "mysemester": selectedSemester,
+      "obtainedmarks": marksController.text,
+    });
+    await prefs.setString('gradeData', json.encode(data));
+
+    marksController.clear();
+    setState(() {
+      selectedCourse = selectedCreditHour = selectedSemester = null;
+    });
+
+    // Notify the Dashboard to refresh the data
+    widget.refreshDashboard();
+
+    // Show success dialog
+    _showSuccessDialog();
+  }
+
+  void _showSuccessDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          title: Text("Success"),
+          content: Text("Data entered successfully!"),
+          actions: <Widget>[
+            TextButton(
+              child: Text("OK"),
+              onPressed: () {
+                Navigator.pop(context); // Close the dialog
+                Navigator.pop(context); // Go back to the Dashboard screen
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text("Grade Book"), backgroundColor: Colors.blueAccent),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SingleChildScrollView(
+          child: Column(
+            children: [
+              _buildDropdown("Course Name", ['OOP', 'DSA', 'OOAD', 'PF', 'OOA'], (value) => setState(() => selectedCourse = value)),
+              _buildDropdown("Credit Hours", ['0', '1', '2', '3', '4'], (value) => setState(() => selectedCreditHour = value)),
+              _buildDropdown("Semester", List.generate(8, (index) => (index + 1).toString()), (value) => setState(() => selectedSemester = value)),
+              TextField(controller: marksController, keyboardType: TextInputType.number, decoration: InputDecoration(labelText: "Subject Marks")),
+              SizedBox(height: 20),
+              ElevatedButton(
+                onPressed: saveData,
+                child: Text("Submit", style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                style: ElevatedButton.styleFrom(padding: EdgeInsets.symmetric(vertical: 16.0, horizontal: 30.0), backgroundColor: Colors.blueAccent),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDropdown(String label, List<String> items, ValueChanged<String?> onChanged) {
+    return DropdownButtonFormField<String>(
+      decoration: InputDecoration(labelText: label),
+      items: items.map((item) => DropdownMenuItem(value: item, child: Text(item))).toList(),
+      onChanged: onChanged,
+      value: label == "Course Name" ? selectedCourse : label == "Credit Hours" ? selectedCreditHour : selectedSemester,
+    );
+  }
+}
