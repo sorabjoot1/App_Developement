@@ -1,0 +1,324 @@
+import 'dart:convert';
+import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
+
+void main() {
+  runApp(const MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Grade Dashboard',
+      theme: ThemeData(
+        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepPurple),
+      ),
+      home: const Home(),
+    );
+  }
+}
+
+class UserModel {
+  String? courseName;
+  String? semesterNo;
+  String? creditHours;
+  String? marks;
+  String? userId;
+
+  UserModel({this.courseName, this.semesterNo, this.creditHours, this.marks, this.userId});
+
+  UserModel.fromJson(Map<String, dynamic> json) {
+    courseName = json['course_name'].toString();
+    semesterNo = json['semester_no'].toString();
+    creditHours = json['credit_hours'].toString();
+    marks = json['marks'].toString();
+    userId = json['user_id'].toString();
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'course_name': courseName,
+      'semester_no': semesterNo,
+      'credit_hours': creditHours,
+      'marks': marks,
+      'user_id': userId,
+    };
+  }
+}
+
+class Home extends StatefulWidget {
+  const Home({super.key});
+
+  @override
+  State<Home> createState() => _HomeState();
+}
+
+class _HomeState extends State<Home> {
+  List<UserModel> studentList = [];
+  List<UserModel> filteredList = [];
+  bool isDataReady = false;
+  final TextEditingController _searchController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    loadSavedData();
+    _searchController.addListener(() => _filterList(_searchController.text));
+  }
+
+  void _filterList(String query) {
+    setState(() {
+      filteredList = studentList
+          .where((student) => student.userId?.toLowerCase().contains(query.toLowerCase()) ?? false)
+          .toList();
+    });
+  }
+
+  Future<void> loadSavedData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    String? savedData = prefs.getString('storedStudents');
+    if (savedData != null) {
+      var data = jsonDecode(savedData);
+      List<UserModel> tempList = [];
+      for (var i in data) {
+        tempList.add(UserModel.fromJson(i as Map<String, dynamic>));
+      }
+      setState(() {
+        studentList = tempList;
+        filteredList = tempList;
+        isDataReady = true;
+      });
+    }
+  }
+
+  Future<void> retrieveAndSaveData() async {
+    final response = await http.get(Uri.parse('https://devtechtop.com/management/public/api/select_data'));
+    if (response.statusCode == 200) {
+      var decoded = jsonDecode(response.body);
+      var data = decoded['data'];
+      List<UserModel> tempList = [];
+      for (var item in data) {
+        tempList.add(UserModel.fromJson(item as Map<String, dynamic>));
+      }
+      setState(() {
+        studentList = tempList;
+        filteredList = tempList;
+        isDataReady = true;
+      });
+      SharedPreferences prefs = await SharedPreferences.getInstance();
+      prefs.setString('storedStudents', jsonEncode(data));
+    }
+  }
+
+  Future<void> clearSavedData() async {
+    SharedPreferences prefs = await SharedPreferences.getInstance();
+    await prefs.remove('storedStudents');
+    setState(() {
+      studentList.clear();
+      filteredList.clear();
+      isDataReady = false;
+      _searchController.clear();
+    });
+  }
+
+  void _showAddStudentForm() {
+    final formKey = GlobalKey<FormState>();
+    String? userId, courseName, semesterNo, creditHours, marks;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text("Add New Student"),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                children: [
+                  _formField("User ID", (val) => userId = val),
+                  _formField("Course Name", (val) => courseName = val),
+                  _formField("Semester No", (val) => semesterNo = val),
+                  _formField("Credit Hours", (val) => creditHours = val),
+                  _formField("Marks", (val) => marks = val),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(child: const Text("Cancel"), onPressed: () => Navigator.pop(context)),
+            ElevatedButton(
+              child: const Text("Add"),
+              onPressed: () async {
+                if (formKey.currentState!.validate()) {
+                  formKey.currentState!.save();
+
+                  var url = Uri.parse('https://devtechtop.com/management/public/api/grades').replace(queryParameters: {
+                    'user_id': userId,
+                    'course_name': courseName,
+                    'semester_no': semesterNo,
+                    'credit_hours': creditHours,
+                    'marks': marks,
+                  });
+
+                  var response = await http.get(url);
+                  var responseData = jsonDecode(response.body);
+                  String message = responseData['message'];
+
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(message)));
+
+                  if (response.statusCode != 200) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text("Failed to add student!")),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _formField(String label, Function(String?) onSaved) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: TextFormField(
+        decoration: InputDecoration(
+          labelText: label,
+          border: const OutlineInputBorder(),
+        ),
+        onSaved: onSaved,
+        validator: (value) => value == null || value.isEmpty ? "Required" : null,
+      ),
+    );
+  }
+
+  Widget studentCard(UserModel student) {
+    return Card(
+      elevation: 3,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      child: ListTile(
+        contentPadding: const EdgeInsets.all(15),
+        title: Text('Course: ${student.courseName ?? "N/A"}', style: const TextStyle(fontWeight: FontWeight.bold)),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Semester: ${student.semesterNo ?? "N/A"}'),
+            Text('Credit Hours: ${student.creditHours ?? "N/A"}'),
+            Text('Marks: ${student.marks ?? "N/A"}'),
+          ],
+        ),
+        trailing: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(Icons.person, color: Colors.indigo),
+            Text(student.userId ?? "N/A", style: const TextStyle(fontWeight: FontWeight.w600)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _showFabOptions() {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) {
+        return Container(
+          padding: const EdgeInsets.symmetric(vertical: 10),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              ListTile(
+                leading: const Icon(Icons.download, color: Colors.indigo),
+                title: const Text("Load Records"),
+                onTap: () {
+                  Navigator.pop(context);
+                  retrieveAndSaveData();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.delete, color: Colors.indigo),
+                title: const Text("Clear Data"),
+                onTap: () {
+                  Navigator.pop(context);
+                  clearSavedData();
+                },
+              ),
+              ListTile(
+                leading: const Icon(Icons.person_add, color: Colors.indigo),
+                title: const Text("Add New Student"),
+                onTap: () {
+                  Navigator.pop(context);
+                  _showAddStudentForm();
+                },
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Student Grades'),
+        backgroundColor: Colors.indigo,
+        centerTitle: true,
+      ),
+      body: Column(
+        children: [
+          const SizedBox(height: 10),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12),
+            child: TextField(
+              controller: _searchController,
+              decoration: InputDecoration(
+                hintText: 'Search by User ID',
+                prefixIcon: const Icon(Icons.search),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+            ),
+          ),
+          const SizedBox(height: 15),
+          Expanded(
+            child: isDataReady
+                ? filteredList.isNotEmpty
+                    ? ListView.builder(
+                        itemCount: filteredList.length,
+                        itemBuilder: (context, index) {
+                          return studentCard(filteredList[index]);
+                        },
+                      )
+                    : const Center(
+                        child: Text("No results found.", style: TextStyle(color: Colors.grey)),
+                      )
+                : const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(30),
+                      child: Text(
+                        'No records found.\nUse the FAB to Load Records.',
+                        style: TextStyle(fontSize: 16, color: Colors.grey),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+          ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        backgroundColor: Colors.indigo,
+        onPressed: _showFabOptions,
+        child: const Icon(Icons.menu),
+      ),
+    );
+  }
+}
