@@ -1,0 +1,274 @@
+import 'package:flutter/material.dart';
+import 'package:sqflite/sqflite.dart';
+import 'package:path/path.dart' as p; // Fixed: added alias to avoid Context conflict
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+
+// Subject model
+class Subject {
+  final String name;
+  final String teacher;
+  final int creditHours;
+
+  Subject({required this.name, required this.teacher, required this.creditHours});
+}
+
+// API data model example
+class ApiData {
+  final int id;
+  final String title;
+
+  ApiData({required this.id, required this.title});
+
+  factory ApiData.fromJson(Map<String, dynamic> json) {
+    return ApiData(id: json['id'], title: json['title']);
+  }
+}
+
+void main() {
+  runApp(MyApp());
+}
+
+class MyApp extends StatelessWidget {
+  final List<Subject> subjects = [
+    Subject(name: 'Mathematics', teacher: 'Mr. Smith', creditHours: 3),
+    Subject(name: 'Physics', teacher: 'Ms. Johnson', creditHours: 4),
+    Subject(name: 'Chemistry', teacher: 'Dr. Lee', creditHours: 3),
+  ];
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'Multi Page App',
+      theme: ThemeData(primarySwatch: Colors.blue),
+      home: MainPage(subjects: subjects),
+    );
+  }
+}
+
+class MainPage extends StatefulWidget {
+  final List<Subject> subjects;
+  MainPage({required this.subjects});
+
+  @override
+  _MainPageState createState() => _MainPageState();
+}
+
+class _MainPageState extends State<MainPage> {
+  int _selectedIndex = 0;
+
+  Database? _database;
+  List<String> _savedTexts = [];
+
+  List<ApiData> _apiDataList = [];
+  bool _isLoadingApi = false;
+
+  final TextEditingController _textController = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _initDb();
+  }
+
+  Future<void> _initDb() async {
+    _database = await openDatabase(
+      p.join(await getDatabasesPath(), 'texts.db'), // FIXED: using alias
+      onCreate: (db, version) {
+        return db.execute(
+          'CREATE TABLE texts(id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT)',
+        );
+      },
+      version: 1,
+    );
+    _loadSavedTexts();
+  }
+
+  Future<void> _loadSavedTexts() async {
+    if (_database == null) return;
+    final List<Map<String, dynamic>> maps = await _database!.query('texts');
+    setState(() {
+      _savedTexts = List.generate(maps.length, (i) => maps[i]['content'] as String);
+    });
+  }
+
+  Future<void> _saveText(String text) async {
+    if (_database == null) return;
+    await _database!.insert('texts', {'content': text});
+    _textController.clear();
+    _loadSavedTexts();
+  }
+
+  Future<void> _fetchApiData() async {
+    setState(() {
+      _isLoadingApi = true;
+    });
+
+    try {
+      final response = await http.get(Uri.parse('https://jsonplaceholder.typicode.com/posts?_limit=5'));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> jsonData = json.decode(response.body);
+        setState(() {
+          _apiDataList = jsonData.map((e) => ApiData.fromJson(e)).toList();
+          _isLoadingApi = false;
+        });
+      } else {
+        setState(() {
+          _isLoadingApi = false;
+        });
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Failed to load API data')));
+      }
+    } catch (e) {
+      setState(() {
+        _isLoadingApi = false;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+    }
+  }
+
+  void _onItemTapped(int index) {
+    Navigator.pop(context); // FIXED: This is now valid
+    setState(() {
+      _selectedIndex = index;
+    });
+
+    if (index == 2) {
+      _fetchApiData();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Widget body;
+
+    switch (_selectedIndex) {
+      case 0:
+        body = _buildInputPage();
+        break;
+      case 1:
+        body = _buildSubjectsPage();
+        break;
+      case 2:
+        body = _buildApiPage();
+        break;
+      default:
+        body = Center(child: Text('Page not found'));
+    }
+
+    return Scaffold(
+      appBar: AppBar(title: Text('Flutter Multi Page App')),
+      drawer: Drawer(
+        child: ListView(
+          children: [
+            DrawerHeader(
+              decoration: BoxDecoration(color: Colors.blue),
+              child: Text('Navigation Menu', style: TextStyle(color: Colors.white, fontSize: 24)),
+            ),
+            ListTile(
+              leading: Icon(Icons.save),
+              title: Text('Input Text'),
+              selected: _selectedIndex == 0,
+              onTap: () => _onItemTapped(0),
+            ),
+            ListTile(
+              leading: Icon(Icons.book),
+              title: Text('Subjects'),
+              selected: _selectedIndex == 1,
+              onTap: () => _onItemTapped(1),
+            ),
+            ListTile(
+              leading: Icon(Icons.cloud_download),
+              title: Text('API Data'),
+              selected: _selectedIndex == 2,
+              onTap: () => _onItemTapped(2),
+            ),
+          ],
+        ),
+      ),
+      body: body,
+    );
+  }
+
+  Widget _buildInputPage() {
+    return Padding(
+      padding: const EdgeInsets.all(16.0),
+      child: Column(
+        children: [
+          TextField(
+            controller: _textController,
+            decoration: InputDecoration(labelText: 'Enter text'),
+          ),
+          SizedBox(height: 10),
+          ElevatedButton(
+            onPressed: () {
+              final text = _textController.text.trim();
+              if (text.isNotEmpty) {
+                _saveText(text);
+              }
+            },
+            child: Text('Save to Local Storage'),
+          ),
+          SizedBox(height: 20),
+          Text('Saved texts:', style: TextStyle(fontWeight: FontWeight.bold)),
+          Expanded(
+            child: ListView.builder(
+              itemCount: _savedTexts.length,
+              itemBuilder: (context, index) => ListTile(
+                leading: Icon(Icons.note),
+                title: Text(_savedTexts[index]),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSubjectsPage() {
+    return SingleChildScrollView(
+      child: Column(
+        children: [
+          Image.network(
+            'https://flutter.dev/assets/homepage/carousel/slide_1-bg-ef25f89b42064a4d99e19e4ee69f24450c1080ed435b79f6b3a8dd1a7d64ec6a.jpg',
+            height: 200,
+            fit: BoxFit.cover,
+          ),
+          SizedBox(height: 20),
+          ListView.builder(
+            shrinkWrap: true,
+            physics: NeverScrollableScrollPhysics(),
+            itemCount: widget.subjects.length,
+            itemBuilder: (context, index) {
+              final subject = widget.subjects[index];
+              return ListTile(
+                leading: Icon(Icons.book),
+                title: Text(subject.name),
+                subtitle: Text('Teacher: ${subject.teacher} - Credit Hours: ${subject.creditHours}'),
+              );
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildApiPage() {
+    if (_isLoadingApi) {
+      return Center(child: CircularProgressIndicator());
+    }
+    if (_apiDataList.isEmpty) {
+      return Center(child: Text('No data loaded yet. Open drawer and tap "API Data"'));
+    }
+    return ListView.builder(
+      itemCount: _apiDataList.length,
+      itemBuilder: (context, index) {
+        final item = _apiDataList[index];
+        return ListTile(
+          leading: CircleAvatar(child: Text(item.id.toString())),
+          title: Text(item.title),
+        );
+      },
+    );
+  }
+}
